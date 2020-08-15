@@ -61,6 +61,9 @@ private:
 
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE; // Reference to the graphics card used for Vulkan
 
+    VkDevice device; // Logical device
+    VkQueue graphicsQueue; // Handle to queue on logical device
+
     void initWindow() {
         glfwInit();
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -74,6 +77,7 @@ private:
         createInstance();
         setupDebugMessenger();
         pickPhysicalDevice();
+        createLogicalDevice();
     }
 
     void mainLoop() {
@@ -87,6 +91,8 @@ private:
         if (enableValidationLayers) {
             DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
         }
+
+        vkDestroyDevice(device, nullptr);
 
         vkDestroyInstance(instance, nullptr);
 
@@ -211,6 +217,47 @@ private:
         if (physicalDevice == VK_NULL_HANDLE) {
             throw std::runtime_error("Failed to find a GPU meeting requirements!");
         }
+    }
+
+    void createLogicalDevice() {
+        QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+
+        // We are creating a single queue. This is all we need, we'll merge it on the main thread, but come up with some cool instructions on the other threads
+        VkDeviceQueueCreateInfo queueCreateInfo{};
+        queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queueCreateInfo.queueFamilyIndex = indices.graphicsFamily.value();
+        queueCreateInfo.queueCount = 1;
+
+        float queuePriority = 1.0f; // Required for all queues
+        queueCreateInfo.pQueuePriorities = &queuePriority;
+
+        // Specify device features required
+        // We already queried these with vkGetPhysicalDeviceFeatures
+        VkPhysicalDeviceFeatures deviceFeatures{};
+
+        // Specifying configuration of logical device
+        // Remember you must configure and the create
+        VkDeviceCreateInfo createInfo{};
+        createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+
+        createInfo.pQueueCreateInfos = &queueCreateInfo; // Give our queue to the logical device
+        createInfo.queueCreateInfoCount = 1;
+        createInfo.pEnabledFeatures = &deviceFeatures;
+
+        createInfo.enabledExtensionCount = 0; // Change this when we're going to try to write to the screen etc.
+        
+        // Adding device specific extensions
+        if (enableValidationLayers) {
+            createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size()); // Deprecated property
+        } else {
+            createInfo.enabledLayerCount = 0;
+        }
+
+        if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create logical device!");
+        }
+
+        vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
     }
 
     bool checkValidationLayerSupport() {
